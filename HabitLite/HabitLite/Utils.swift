@@ -47,3 +47,6 @@ extension Color {
     }
     static var fallback: Color { .accentColor }
 }
+extension Notification.Name {
+    static let habitDataDidChange = Notification.Name("HabitDataDidChange")
+}

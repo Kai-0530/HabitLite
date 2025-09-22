@@ -7,105 +7,334 @@
 
 import SwiftUI
 import SwiftData
-import Charts
 
 struct AnalyticsView: View {
     @Environment(\.modelContext) private var context
-    @Query private var habits: [Habit]
+    @State private var habits: [Habit] = []
     @State private var scope: Scope = .weekly
-    
     enum Scope: String, CaseIterable, Identifiable { case weekly, monthly; var id: String { rawValue } }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Picker("範圍", selection: $scope) {
+                Text("週").tag(Scope.weekly)
+                Text("月").tag(Scope.monthly)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+
+            if habits.isEmpty {
+                ContentUnavailableView("尚無資料", systemImage: "chart.bar",
+                    description: Text("到「今天」頁新增習慣後再回來看看吧"))
+            } else {
+                switch scope {
+                case .weekly:  WeeklyGridView(habits: habits)
+                case .monthly: MonthlyCalendarView(habits: habits)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .navigationTitle("統計")
+        .onAppear(perform: reload)       // ← 切到統計分頁就會觸發（因為 .id 重建）
+        .onChange(of: scope) { _ in reload() }
+    }
+
+    private func reload() {
+        let desc = FetchDescriptor<Habit>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+        habits = (try? context.fetch(desc)) ?? []
+    }
+}
+
+// MARK: - Weekly View
+
+private struct WeeklyGridView: View {
+    @Environment(\.modelContext) private var context
+    let habits: [Habit]
+
+    private var weekDays: [Date] {
+        let cal = Calendar.current
+        let start = DateHelper.startOfWeek(Date())
+        return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
+    }
+
+    private let cellW: CGFloat = 26
+    private let cellH: CGFloat = 22
+    private let gap: CGFloat = 6
+
+    // 只到今天
+    private var todayKey: Date { DateHelper.startOfDay(Date()) }
+    private var daysPassedInWeek: Int {
+        weekDays.filter { DateHelper.startOfDay($0) <= todayKey }.count
+    }
+    private var totalBarWidth: CGFloat { cellW * 7 + gap * 6 }
+    private var progressWidth: CGFloat {
+        let n = max(0, daysPassedInWeek)
+        return cellW * CGFloat(n) + gap * CGFloat(max(0, n - 1))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header：M T W T F S S（用 index 當 id，避免重複）
+            HStack(spacing: gap) {
+                Spacer().frame(width: 12)
+                Text("")
+                Spacer()
+                let labels = ["M","T","W","T","F","S","S"]
+                ForEach(labels.indices, id: \.self) { i in
+                    Text(labels[i])
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                        .frame(width: cellW, height: 16)
+                }
+            }
+            .padding(.horizontal, 8)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(habits) { habit in
+                        HStack(spacing: gap) {
+                            Circle()
+                                .fill(AppPalette.color(for: habit.colorHex))
+                                .frame(width: 12, height: 12)
+
+                            Text(habit.name)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                                .frame(minWidth: 80, alignment: .leading)
+
+                            Spacer(minLength: 8)
+
+                            if habit.period == .weekly {
+                                // 本週是否已生效（任一到今天的日子生效即可）
+                                let weekActive = weekDays.contains { isActive(habit, on: $0) && DateHelper.startOfDay($0) <= todayKey }
+                                // 本週「截至今天」的達標判定（使用今天去算週 periodKey 的進度）
+                                let ok = isDone(habit, on: todayKey)
+
+                                ZStack(alignment: .leading) {
+                                    // 整週底色（未來區域）
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.gray.opacity(0.06))
+                                        .frame(width: totalBarWidth, height: cellH)
+
+                                    // 到今天的進度區域
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(weekActive ? (ok ? AppPalette.color(for: habit.colorHex) : Color.gray.opacity(0.15))
+                                                         : Color.gray.opacity(0.06))
+                                        .frame(width: progressWidth, height: cellH)
+                                }
+                                .frame(width: totalBarWidth, height: cellH)
+                            } else {
+                                // daily：今天之後一律淡灰
+                                ForEach(weekDays, id: \.self) { day in
+                                    let isFuture = DateHelper.startOfDay(day) > todayKey
+                                    let active = !isFuture && isActive(habit, on: day)
+                                    let ok = active && isDone(habit, on: day)
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(
+                                            isFuture ? Color.gray.opacity(0.06)
+                                                     : (active ? (ok ? AppPalette.color(for: habit.colorHex)
+                                                                     : Color.gray.opacity(0.15))
+                                                               : Color.gray.opacity(0.06))
+                                        )
+                                        .frame(width: cellW, height: cellH)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                    }
+
+                    // Perfect：只檢查到今天，今天之後顯示淡灰
+                    HStack(spacing: gap) {
+                        Spacer().frame(width: 12)
+                        Text("Perfect")
+                            .font(.subheadline.bold())
+                            .frame(minWidth: 80, alignment: .leading)
+
+                        Spacer(minLength: 8)
+
+                        ForEach(weekDays, id: \.self) { day in
+                            let isFuture = DateHelper.startOfDay(day) > todayKey
+                            let perfect = !isFuture && isPerfectDay(day: day)
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(isFuture ? Color.gray.opacity(0.06)
+                                                   : (perfect ? Color.green.opacity(0.18) : Color.gray.opacity(0.10)))
+                                    .frame(width: cellW, height: cellH)
+                                if perfect {
+                                    Image(systemName: "rosette")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(.green)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    // 生效與完成（帶 startDate 容錯）
+    private func isActive(_ habit: Habit, on day: Date) -> Bool {
+        let d = DateHelper.startOfDay(day)
+        let s = DateHelper.startOfDay(habit.startDate ?? habit.createdAt)
+        return d >= s
+    }
+    private func isDone(_ habit: Habit, on day: Date) -> Bool {
+        guard isActive(habit, on: day) else { return false }
+        let (c, t, _) = HabitService.progress(for: habit, on: day, context: context)
+        return habit.type == .atLeast ? (c >= t) : (c <= t)
+    }
+    private func isPerfectDay(day: Date) -> Bool {
+        let active = habits.filter { isActive($0, on: day) }
+        guard !active.isEmpty else { return false }
+        for h in active where !isDone(h, on: day) { return false }
+        return true
+    }
+}
+
+
+// MARK: - Monthly View
+
+private struct MonthlyCalendarView: View {
+    @Environment(\.modelContext) private var context
+    let habits: [Habit]
+    @State private var currentMonthAnchor = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date()))!
+    
+    private var cal: Calendar {
+        var c = Calendar.current
+        c.firstWeekday = 2 // 週一
+        return c
+    }
+    
+    private var daysInMonth: Int {
+        cal.range(of: .day, in: .month, for: currentMonthAnchor)?.count ?? 30
+    }
+    
+    private var firstWeekdayOffset: Int {
+        // 月初對齊週一的前置空格數
+        let weekday = cal.component(.weekday, from: currentMonthAnchor) // 1..7, 1=Sun
+        // 轉成以週一為 1 的偏移：Mon(2)→0, Tue(3)→1, ..., Sun(1)→6
+        return (weekday + 5) % 7
+    }
+    
+    private var gridItems: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 8), count: 7) }
     
     var body: some View {
-        NavigationStack {
-            VStack {
-                Picker("範圍", selection: $scope) {
-                    Text("週").tag(Scope.weekly)
-                    Text("月").tag(Scope.monthly)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                
-                if habits.isEmpty {
-                    ContentUnavailableView("尚無資料", systemImage: "chart.bar")
-                } else {
-                    Chart(makeSeries(), id: \.label) { item in
-                        BarMark(
-                            x: .value("Period", item.label),
-                            y: .value("完成率", item.rate * 100)
-                        )
+        VStack(alignment: .leading, spacing: 12) {
+            // 月份切換與標題
+            HStack {
+                Button {
+                    if let prev = cal.date(byAdding: .month, value: -1, to: currentMonthAnchor) {
+                        currentMonthAnchor = prev
                     }
-                    .chartYScale(domain: 0...100)
-                    .frame(height: 260)
-                    .padding()
-
-                }
+                } label: { Image(systemName: "chevron.left") }
+                
                 Spacer()
+                Text(monthTitle(currentMonthAnchor))
+                    .font(.headline)
+                Spacer()
+                
+                Button {
+                    if let next = cal.date(byAdding: .month, value: 1, to: currentMonthAnchor) {
+                        currentMonthAnchor = next
+                    }
+                } label: { Image(systemName: "chevron.right") }
             }
-            .navigationTitle("統計")
-        }
-    }
-    
-    // 取近 6 週 / 6 月
-    private func makeSeries() -> [(label: String, rate: Double)] {
-        let cal = Calendar.current
-        let now = Date()
-        
-        let periods: [Date] = {
-            switch scope {
-            case .weekly:
-                let startThisWeek = DateHelper.startOfWeek(now)
-                return (0..<6).reversed().compactMap { cal.date(byAdding: .weekOfYear, value: -$0, to: startThisWeek) }
-            case .monthly:
-                let comps = cal.dateComponents([.year, .month], from: now)
-                let startThisMonth = cal.date(from: comps)!
-                return (0..<6).reversed().compactMap { cal.date(byAdding: .month, value: -$0, to: startThisMonth) }
-            }
-        }()
-        
-        return periods.map { start in
-            let (done, total) = completion(for: start)
-            let rate = total == 0 ? 0 : Double(done) / Double(total)
-            let label: String = {
-                let f = DateFormatter()
-                f.locale = .current
-                switch scope {
-                case .weekly:
-                    let end = cal.date(byAdding: .day, value: 6, to: start)!
-                    f.dateFormat = "MM/dd"
-                    return "\(f.string(from: start))–\(f.string(from: end))"
-                case .monthly:
-                    f.dateFormat = "yyyy/MM"
-                    return f.string(from: start)
+            .padding(.horizontal, 12)
+            
+            // 週標頭（Mon...Sun）
+            HStack {
+                ForEach(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], id: \.self) { w in
+                    Text(w)
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
                 }
-            }()
-            return (label, rate)
+            }
+            .padding(.horizontal, 4)
+            
+            // 月曆格子
+            LazyVGrid(columns: gridItems, spacing: 10) {
+                // 前導空白
+                ForEach(0..<firstWeekdayOffset, id: \.self) { _ in
+                    Color.clear.frame(height: 52)
+                }
+                
+                // 每一天
+                ForEach(1...daysInMonth, id: \.self) { day in
+                    let date = cal.date(byAdding: .day, value: day - 1, to: currentMonthAnchor)!
+                    let isFuture = DateHelper.startOfDay(date) > DateHelper.startOfDay(Date())
+                    DayCircleCell(date: date,
+                                  ratio: isFuture ? nil : completionRatio(on: date))
+                }
+
+            }
+            .padding(.horizontal, 8)
         }
     }
     
-    // 將每個 habit 在該週/該月的「達成（1）/ 未達（0）」加總求平均
-    private func completion(for start: Date) -> (done: Int, total: Int) {
-        let cal = Calendar.current
-        var days: [Date] = []
-        switch scope {
-        case .weekly:
-            for d in 0..<7 { days.append(cal.date(byAdding: .day, value: d, to: start)!) }
-        case .monthly:
-            let range = cal.range(of: .day, in: .month, for: start)!
-            for d in range { days.append(cal.date(byAdding: .day, value: d - 1, to: start)!) }
+    private func monthTitle(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = .current
+        f.dateFormat = "yyyy/MM"   // ← 小寫 y
+        return f.string(from: date)
+    }
+    
+    private func completionRatio(on date: Date) -> Double {
+        var done = 0
+        var total = 0
+        for h in habits {
+            // 只統計「startDate ≤ 當天」的習慣
+            let d0 = DateHelper.startOfDay(date)
+            let s0 = DateHelper.startOfDay(h.startDate)
+            guard d0 >= s0 else { continue }
+            let (c, t, _) = HabitService.progress(for: h, on: date, context: context)
+            let ok = h.type == .atLeast ? (c >= t) : (c <= t)
+            done += ok ? 1 : 0
+            total += 1
         }
-        var done = 0, total = 0
-        for day in days {
-            for h in habits {
-                // 以 habit.period 決定該天屬於哪個 periodKey
-                let key = DateHelper.periodKey(for: h.period, on: day)
-                let log = h.logs.first(where: { Calendar.current.isDate($0.periodKey, inSameDayAs: key) || $0.periodKey == key })
-                let count = log?.count ?? 0
-                let ok: Bool = (h.type == .atLeast) ? (count >= h.target) : (count <= h.target)
-                done += ok ? 1 : 0
-                total += 1
+        return total == 0 ? 0 : Double(done) / Double(total)
+    }
+}
+
+// MARK: - 圓環視圖（填滿比例）
+
+private struct DayCircleCell: View {
+    let date: Date
+    let ratio: Double?
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack {
+                Circle()
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 6)
+
+                if let r = ratio {
+                    Circle()
+                        .trim(from: 0, to: min(max(r, 0), 1))
+                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+
+                Text(dayString(date))
+                    .font(.caption2).bold()
             }
+            .frame(height: 42)
         }
-        return (done, total)
+        .accessibilityLabel(Text("\(dateString(date)) 完成 \(Int((ratio ?? 0)*100))%"))
+    }
+    
+    private func dayString(_ date: Date) -> String {
+        let d = Calendar.current.component(.day, from: date)
+        return String(d)
+    }
+    private func dateString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = .current
+        f.dateFormat = "yyyy/MM/dd"
+        return f.string(from: date)
     }
 }

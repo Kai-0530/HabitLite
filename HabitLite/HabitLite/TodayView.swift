@@ -15,42 +15,42 @@ struct TodayView: View {
     @State private var editing: Habit?
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if habits.isEmpty {
-                    ContentUnavailableView("尚無習慣", systemImage: "square.and.pencil",
-                                           description: Text("點右上角「＋」建立第一個習慣"))
-                } else {
-                    List {
-                        ForEach(habits) { habit in
-                            HabitRow(habit: habit, onChanged: reload)
-                                .swipeActions {
-                                    Button("編輯") { editing = habit }
-                                        .tint(.blue)
-                                    Button(role: .destructive) {
-                                        context.delete(habit); try? context.save(); reload()
-                                    } label: { Text("刪除") }
-                                }
-                        }
+        Group {
+            if habits.isEmpty {
+                ContentUnavailableView("尚無習慣", systemImage: "square.and.pencil",
+                                       description: Text("點右上角「＋」建立第一個習慣"))
+            } else {
+                List {
+                    ForEach(habits) { habit in
+                        HabitRow(habit: habit, onChanged: reload)
+                            .swipeActions {
+                                Button("編輯") { editing = habit }
+                                    .tint(.blue)
+                                Button(role: .destructive) {
+                                    context.delete(habit); try? context.save(); reload()
+                                } label: { Text("刪除") }
+                            }
                     }
                 }
+                .listStyle(.insetGrouped)
             }
-            .navigationTitle("今天")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingForm = true } label: { Image(systemName: "plus") }
-                }
-            }
-            .sheet(isPresented: $showingForm) {
-                HabitFormView()
-                    .onDisappear(perform: reload)
-                    .presentationDetents([.medium, .large])
-            }
-            .sheet(item: $editing) { item in
-                HabitFormView(editing: item).onDisappear(perform: reload)
-            }
-            .onAppear(perform: reload)
         }
+        .navigationTitle("今天")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showingForm = true } label: { Image(systemName: "plus") }
+            }
+        }
+        .sheet(isPresented: $showingForm) {
+            HabitFormView()
+                .onDisappear(perform: reload)
+                .presentationDetents([.medium, .large])
+        }
+        .sheet(item: $editing) { item in
+            HabitFormView(editing: item)
+                .onDisappear(perform: reload)
+        }
+        .onAppear(perform: reload)
     }
 
     private func reload() {
@@ -61,26 +61,28 @@ struct TodayView: View {
     }
 }
 
+// 和先前相同（含 +/−、即時刷新）
 private struct HabitRow: View {
     @Environment(\.modelContext) private var context
     let habit: Habit
     var onChanged: () -> Void
+    @State private var tick = 0
 
     var body: some View {
         let p = HabitService.progress(for: habit, context: context)
 
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Circle()
                 .fill(AppPalette.color(for: habit.colorHex))
-                .frame(width: 14, height: 14)
+                .frame(width: 12, height: 12)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(habit.name).font(.headline)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(habit.name).font(.body)
                 Text("\(habit.type.displayName)・\(habit.period.displayName)目標 \(p.target)")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
             Text("\(p.count)/\(p.target)")
                 .monospaced()
@@ -91,19 +93,23 @@ private struct HabitRow: View {
             HStack(spacing: 8) {
                 Button {
                     HabitService.increment(habit, by: -1, context: context)
-                    onChanged()
+                    tick &+= 1
+                    DispatchQueue.main.async { onChanged() }
                 } label: { Image(systemName: "minus.circle").font(.title3) }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("減一"))
 
                 Button {
                     HabitService.increment(habit, by: 1, context: context)
-                    onChanged()
+                    tick &+= 1
+                    DispatchQueue.main.async { onChanged() }
                 } label: { Image(systemName: "plus.circle").font(.title3) }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("加一"))
             }
         }
+        .id(tick)
         .padding(.vertical, 6)
     }
 }
+

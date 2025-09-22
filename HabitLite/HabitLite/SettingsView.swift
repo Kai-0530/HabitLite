@@ -11,7 +11,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("偏好設定") {
-                Text("（TODO：一週起始日、備份/匯出、提醒…）")
+                Text("TODO: 一週起始日、備份/匯出、提醒…）")
                     .foregroundStyle(.secondary)
             }
         }

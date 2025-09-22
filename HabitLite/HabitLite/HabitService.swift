@@ -24,6 +24,7 @@ struct HabitService {
         let log = currentLog(for: habit, date: date, context: context)
         log.count = max(0, log.count + delta)
         try? context.save()
+        NotificationCenter.default.post(name: .habitDataDidChange, object: nil)   // ← 新增
     }
     
     static func progress(for habit: Habit, on date: Date = .now, context: ModelContext) -> (count: Int, target: Int, done: Bool) {

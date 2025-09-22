@@ -16,6 +16,7 @@ struct HabitFormView: View {
     @State private var name = ""
     @State private var colorHex = "#4F7CAC"
     @State private var type: HabitType = .atLeast
+    @State private var startDate: Date = .now
     @State private var period: Period = .daily
     @State private var target: Int = 1
     
@@ -33,6 +34,9 @@ struct HabitFormView: View {
                     }
                     Picker("週期", selection: $period) {
                         ForEach(Period.allCases) { p in Text(p.displayName).tag(p) }
+                    }
+                    Section("開始日期") {
+                        DatePicker("從這天開始計算", selection: $startDate, displayedComponents: .date)
                     }
                     Stepper("目標次數：\(target)", value: $target, in: 0...999)
                 }
@@ -81,6 +85,7 @@ struct HabitFormView: View {
                     type = e.type
                     period = e.period
                     target = e.target
+                    startDate = e.startDate
                 }
             }
         }
@@ -93,11 +98,15 @@ struct HabitFormView: View {
             e.type = type
             e.period = period
             e.target = target
+            e.startDate = DateHelper.startOfDay(startDate) // ← 建議對齊零點
         } else {
             let h = Habit(name: name, colorHex: colorHex, type: type, period: period, target: target)
+            h.startDate = DateHelper.startOfDay(startDate) // ← 新增
             context.insert(h)
         }
         try? context.save()
+        NotificationCenter.default.post(name: .habitDataDidChange, object: nil)
         dismiss()
+
     }
 }
