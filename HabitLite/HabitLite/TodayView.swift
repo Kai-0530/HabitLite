@@ -13,6 +13,7 @@ struct TodayView: View {
     @State private var habits: [Habit] = []
     @State private var showingForm = false
     @State private var editing: Habit?
+    @State private var selectedDate = Date() // 可選日期（預設今天）
 
     var body: some View {
         Group {
@@ -21,15 +22,60 @@ struct TodayView: View {
                                        description: Text("點右上角「＋」建立第一個習慣"))
             } else {
                 List {
-                    ForEach(habits) { habit in
-                        HabitRow(habit: habit, onChanged: reload)
-                            .swipeActions {
-                                Button("編輯") { editing = habit }
-                                    .tint(.blue)
-                                Button(role: .destructive) {
-                                    context.delete(habit); try? context.save(); reload()
-                                } label: { Text("刪除") }
+                    // 依「是否生效」與「好/壞」分類
+                    let activeGood = habits.filter { isActive($0, on: selectedDate) && $0.type == .atLeast }
+                    let activeBad  = habits.filter { isActive($0, on: selectedDate) && $0.type == .atMost  }
+                    let notStarted = habits.filter { !isActive($0, on: selectedDate) }
+
+                    if !activeGood.isEmpty {
+                        Section("好習慣") {
+                            ForEach(activeGood) { habit in
+                                HabitRow(habit: habit,
+                                         date: selectedDate,
+                                         enabled: true,
+                                         onChanged: reload)
+                                .swipeActions {
+                                    Button("編輯") { editing = habit }.tint(.blue)
+                                    Button(role: .destructive) {
+                                        context.delete(habit); try? context.save(); reload()
+                                    } label: { Text("刪除") }
+                                }
                             }
+                        }
+                    }
+
+                    if !activeBad.isEmpty {
+                        Section("壞習慣") {
+                            ForEach(activeBad) { habit in
+                                HabitRow(habit: habit,
+                                         date: selectedDate,
+                                         enabled: true,
+                                         onChanged: reload)
+                                .swipeActions {
+                                    Button("編輯") { editing = habit }.tint(.blue)
+                                    Button(role: .destructive) {
+                                        context.delete(habit); try? context.save(); reload()
+                                    } label: { Text("刪除") }
+                                }
+                            }
+                        }
+                    }
+
+                    if !notStarted.isEmpty {
+                        Section("未開始") {
+                            ForEach(notStarted) { habit in
+                                HabitRow(habit: habit,
+                                         date: selectedDate,
+                                         enabled: false,   // 未生效 → 停用加減
+                                         onChanged: reload)
+                                .swipeActions {
+                                    Button("編輯") { editing = habit }.tint(.blue)
+                                    Button(role: .destructive) {
+                                        context.delete(habit); try? context.save(); reload()
+                                    } label: { Text("刪除") }
+                                }
+                            }
+                        }
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -37,6 +83,12 @@ struct TodayView: View {
         }
         .navigationTitle("今天")
         .toolbar {
+            // 導覽列中間放日期選擇器
+            ToolbarItem(placement: .principal) {
+                DatePicker("", selection: $selectedDate, displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showingForm = true } label: { Image(systemName: "plus") }
             }
@@ -59,17 +111,26 @@ struct TodayView: View {
         )
         habits = (try? context.fetch(desc)) ?? []
     }
+
+    // 判斷該習慣在某天是否已生效（startDate 無值則回退用 createdAt）
+    private func isActive(_ habit: Habit, on day: Date) -> Bool {
+        let d = DateHelper.startOfDay(day)
+        let s = DateHelper.startOfDay(habit.startDate ?? habit.createdAt)
+        return d >= s
+    }
 }
 
-// 和先前相同（含 +/−、即時刷新）
+// MARK: - Row（支援指定日期 + 可停用）
 private struct HabitRow: View {
     @Environment(\.modelContext) private var context
     let habit: Habit
+    let date: Date
+    let enabled: Bool               // 未開始 → false（停用 +/−）
     var onChanged: () -> Void
     @State private var tick = 0
 
     var body: some View {
-        let p = HabitService.progress(for: habit, context: context)
+        let p = HabitService.progress(for: habit, on: date, context: context)
 
         HStack(spacing: 10) {
             Circle()
@@ -92,24 +153,26 @@ private struct HabitRow: View {
 
             HStack(spacing: 8) {
                 Button {
-                    HabitService.increment(habit, by: -1, context: context)
+                    HabitService.increment(habit, by: -1, date: date, context: context)
                     tick &+= 1
                     DispatchQueue.main.async { onChanged() }
                 } label: { Image(systemName: "minus.circle").font(.title3) }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("減一"))
+                .disabled(!enabled)
 
                 Button {
-                    HabitService.increment(habit, by: 1, context: context)
+                    HabitService.increment(habit, by: 1, date: date, context: context)
                     tick &+= 1
                     DispatchQueue.main.async { onChanged() }
                 } label: { Image(systemName: "plus.circle").font(.title3) }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("加一"))
+                .disabled(!enabled)
             }
         }
+        .opacity(enabled ? 1.0 : 0.5) // 未開始 → 淡化
         .id(tick)
         .padding(.vertical, 6)
     }
 }
-
