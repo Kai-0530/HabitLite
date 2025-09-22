@@ -36,16 +36,36 @@ struct HabitFormView: View {
                     }
                     Stepper("目標次數：\(target)", value: $target, in: 0...999)
                 }
-                Section("顏色（Hex）") {
-                    TextField("#RRGGBB", text: $colorHex)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                Section("顏色") {
+                    let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(AppPalette.hexes, id: \.self) { hex in
+                            ZStack {
+                                Circle()
+                                    .fill(AppPalette.color(for: hex))
+                                    .frame(width: 34, height: 34)
+
+                                if hex == colorHex {
+                                    Image(systemName: "checkmark")
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                            .onTapGesture { colorHex = hex }
+                            .accessibilityLabel(Text("選擇顏色"))
+                        }
+                    }
+                    .padding(.vertical, 4)
+
                     HStack {
-                        Text("預覽")
+                        Text("目前顏色")
                         Spacer()
-                        Circle().fill(Color(hex: colorHex) ?? .fallback).frame(width: 24, height: 24)
+                        Circle()
+                            .fill(AppPalette.color(for: colorHex))
+                            .frame(width: 24, height: 24)
                     }
                 }
+
             }
             .navigationTitle(editing == nil ? "新增習慣" : "編輯習慣")
             .toolbar {

@@ -10,10 +10,10 @@ import SwiftData
 
 struct TodayView: View {
     @Environment(\.modelContext) private var context
-    @Query(sort: \Habit.createdAt, order: .reverse) private var habits: [Habit]
+    @State private var habits: [Habit] = []
     @State private var showingForm = false
     @State private var editing: Habit?
-    
+
     var body: some View {
         NavigationStack {
             Group {
@@ -23,15 +23,12 @@ struct TodayView: View {
                 } else {
                     List {
                         ForEach(habits) { habit in
-                            HabitRow(habit: habit)
-                                .contentShape(Rectangle())
-                                .onTapGesture { HabitService.increment(habit, context: context) }
+                            HabitRow(habit: habit, onChanged: reload)
                                 .swipeActions {
                                     Button("編輯") { editing = habit }
                                         .tint(.blue)
                                     Button(role: .destructive) {
-                                        context.delete(habit)
-                                        try? context.save()
+                                        context.delete(habit); try? context.save(); reload()
                                     } label: { Text("刪除") }
                                 }
                         }
@@ -46,36 +43,66 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showingForm) {
                 HabitFormView()
+                    .onDisappear(perform: reload)
                     .presentationDetents([.medium, .large])
             }
             .sheet(item: $editing) { item in
-                HabitFormView(editing: item)
+                HabitFormView(editing: item).onDisappear(perform: reload)
             }
+            .onAppear(perform: reload)
         }
+    }
+
+    private func reload() {
+        var desc = FetchDescriptor<Habit>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        habits = (try? context.fetch(desc)) ?? []
     }
 }
 
 private struct HabitRow: View {
     @Environment(\.modelContext) private var context
     let habit: Habit
-    
+    var onChanged: () -> Void
+
     var body: some View {
         let p = HabitService.progress(for: habit, context: context)
+
         HStack(spacing: 12) {
             Circle()
-                .fill(Color(hex: habit.colorHex) ?? .fallback)
+                .fill(AppPalette.color(for: habit.colorHex))
                 .frame(width: 14, height: 14)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(habit.name).font(.headline)
                 Text("\(habit.type.displayName)・\(habit.period.displayName)目標 \(p.target)")
                     .font(.caption).foregroundStyle(.secondary)
             }
+
             Spacer()
+
             Text("\(p.count)/\(p.target)")
                 .monospaced()
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(p.done ? .green.opacity(0.15) : .gray.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            HStack(spacing: 8) {
+                Button {
+                    HabitService.increment(habit, by: -1, context: context)
+                    onChanged()
+                } label: { Image(systemName: "minus.circle").font(.title3) }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("減一"))
+
+                Button {
+                    HabitService.increment(habit, by: 1, context: context)
+                    onChanged()
+                } label: { Image(systemName: "plus.circle").font(.title3) }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("加一"))
+            }
         }
         .padding(.vertical, 6)
     }
