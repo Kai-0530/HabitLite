@@ -40,7 +40,7 @@ final class Habit {
     var period: Period
     var target: Int
     var createdAt: Date
-    var startDate: Date                          // ← 新增
+    var startDate: Date
     @Relationship(deleteRule: .cascade) var logs: [HabitLog] = []
     
     init(name: String, colorHex: String, type: HabitType, period: Period, target: Int) {
@@ -51,7 +51,7 @@ final class Habit {
         self.period = period
         self.target = max(0, target)
         self.createdAt = .now
-        self.startDate = .now                    // ← 新增（預設當天開始）
+        self.startDate = .now
     }
 }
 
@@ -59,7 +59,6 @@ final class Habit {
 final class HabitLog {
     @Attribute(.unique) var id: UUID
     var habitID: UUID
-    /// 對齊到 period 的起點：daily = 當地時區 00:00；weekly = 該週週一 00:00
     var periodKey: Date
     var count: Int
     

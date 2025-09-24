@@ -14,6 +14,6 @@ struct HabitLiteApp: App {
         WindowGroup {
             RootTabView()
         }
-        .modelContainer(for: [Habit.self, HabitLog.self]) // SwiftData 容器
+        .modelContainer(for: [Habit.self, HabitLog.self]) 
     }
 }

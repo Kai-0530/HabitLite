@@ -98,10 +98,10 @@ struct HabitFormView: View {
             e.type = type
             e.period = period
             e.target = target
-            e.startDate = DateHelper.startOfDay(startDate) // ← 建議對齊零點
+            e.startDate = DateHelper.startOfDay(startDate) 
         } else {
             let h = Habit(name: name, colorHex: colorHex, type: type, period: period, target: target)
-            h.startDate = DateHelper.startOfDay(startDate) // ← 新增
+            h.startDate = DateHelper.startOfDay(startDate)
             context.insert(h)
         }
         try? context.save()

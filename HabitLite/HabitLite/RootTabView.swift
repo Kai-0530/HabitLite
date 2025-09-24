@@ -16,16 +16,16 @@ struct RootTabView: View {
     var body: some View {
         NavigationStack {
             TabView(selection: $selection) {
-                TodayView()                // ← 子頁不再包 NavigationStack
+                TodayView()
                     .tabItem { Label("今天", systemImage: "checkmark.circle") }
                     .tag(MainTab.today)
 
-                AnalyticsView()            // ← 子頁不再包 NavigationStack
-                    .id(analyticsRefreshToken) // 切到統計即重建內容 → 觸發 onAppear
+                AnalyticsView()
+                    .id(analyticsRefreshToken) // 切到統計即重建內容 觸發 onAppear
                     .tabItem { Label("統計", systemImage: "chart.bar") }
                     .tag(MainTab.analytics)
 
-                SettingsView()             // ← 子頁不再包 NavigationStack
+                SettingsView()
                     .tabItem { Label("設定", systemImage: "gearshape") }
                     .tag(MainTab.settings)
             }

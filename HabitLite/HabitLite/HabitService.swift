@@ -16,7 +16,6 @@ struct HabitService {
         }
         let newLog = HabitLog(habitID: habit.id, periodKey: key, count: 0)
         habit.logs.append(newLog)
-        // SwiftData 會追蹤關聯；這裡不必額外插入
         return newLog
     }
     
@@ -24,7 +23,7 @@ struct HabitService {
         let log = currentLog(for: habit, date: date, context: context)
         log.count = max(0, log.count + delta)
         try? context.save()
-        NotificationCenter.default.post(name: .habitDataDidChange, object: nil)   // ← 新增
+        NotificationCenter.default.post(name: .habitDataDidChange, object: nil) 
     }
     
     static func progress(for habit: Habit, on date: Date = .now, context: ModelContext) -> (count: Int, target: Int, done: Bool) {

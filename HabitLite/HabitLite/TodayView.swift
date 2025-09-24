@@ -71,7 +71,7 @@ struct TodayView: View {
                             ForEach(notStarted) { habit in
                                 HabitRow(habit: habit,
                                          date: selectedDate,
-                                         enabled: false,   // 未生效 → 停用加減
+                                         enabled: false,   // 未生效 停用+-
                                          onChanged: reload)
                                 .swipeActions {
                                     Button("編輯") { editing = habit }.tint(.blue)
@@ -124,7 +124,7 @@ private struct HabitRow: View {
     @Environment(\.modelContext) private var context
     let habit: Habit
     let date: Date
-    let enabled: Bool               // 未開始 → false（停用 +/−）
+    let enabled: Bool               // 未開始: false（停用 +/−）
     var onChanged: () -> Void
     @State private var tick = 0
 
@@ -170,7 +170,7 @@ private struct HabitRow: View {
                 .disabled(!enabled)
             }
         }
-        .opacity(enabled ? 1.0 : 0.5) // 未開始 → 淡化
+        .opacity(enabled ? 1.0 : 0.5)
         .id(tick)
         .padding(.vertical, 6)
     }

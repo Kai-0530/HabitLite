@@ -14,11 +14,11 @@ struct DateHelper {
     }
     static func startOfWeek(_ date: Date, in calendar: Calendar = .current) -> Date {
         var cal = calendar
-        cal.firstWeekday = 2 // 1=Sun, 2=Mon；這裡用周一起始
+        cal.firstWeekday = 2 // 1=Sun, 2=Mon；周一起始
         let startOfDay = cal.startOfDay(for: date)
         let weekday = cal.component(.weekday, from: startOfDay)
         // 對齊到周一
-        let diff = (weekday + 5) % 7  // weekday=2(周一) → diff=0
+        let diff = (weekday + 5) % 7
         return cal.date(byAdding: .day, value: -diff, to: startOfDay)!
     }
     static func periodKey(for period: Period, on date: Date) -> Date {

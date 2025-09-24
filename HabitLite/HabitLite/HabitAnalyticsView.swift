@@ -96,7 +96,6 @@ private struct PerHabitMonthlyCalendar: View {
     private func title(_ date: Date) -> String {
         let f = DateFormatter(); f.locale = .current; f.dateFormat = "yyyy/MM"; return f.string(from: date)
     }
-    // 若日期在未來或習慣尚未開始 → 回傳 nil（顯示淡灰，不可點）
     private func dailyRatio(on date: Date) -> Double? {
         let today = DateHelper.startOfDay(Date())
         let d0 = DateHelper.startOfDay(date)
@@ -223,7 +222,6 @@ private struct MonthHeatmapMini: View {
                 .font(.caption.bold())
 
             LazyVGrid(columns: cols, spacing: spacing) {
-                // 用「負索引」避免與日期 id 重複
                 ForEach((-firstWeekdayOffset)..<0, id: \.self) { _ in
                     Color.clear.frame(height: cellH)
                 }
