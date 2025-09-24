@@ -22,6 +22,11 @@ struct TodayView: View {
                                        description: Text("點右上角「＋」建立第一個習慣"))
             } else {
                 List {
+                    Section {
+                        DatePicker("選擇日期", selection: $selectedDate, displayedComponents: .date)
+                            .datePickerStyle(.compact)
+                    } footer: {
+                    }
                     // 依「是否生效」與「好/壞」分類
                     let activeGood = habits.filter { isActive($0, on: selectedDate) && $0.type == .atLeast }
                     let activeBad  = habits.filter { isActive($0, on: selectedDate) && $0.type == .atMost  }
@@ -83,12 +88,6 @@ struct TodayView: View {
         }
         .navigationTitle("今天")
         .toolbar {
-            // 導覽列中間放日期選擇器
-            ToolbarItem(placement: .principal) {
-                DatePicker("", selection: $selectedDate, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showingForm = true } label: { Image(systemName: "plus") }
             }

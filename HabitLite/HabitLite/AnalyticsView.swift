@@ -51,9 +51,13 @@ private struct WeeklyGridView: View {
     @Environment(\.modelContext) private var context
     let habits: [Habit]
 
+    // 以「週一」為起點，支援左右切換週
+    @State private var weekAnchor: Date = DateHelper.startOfWeek(Date())
+
+    // 計算該週 7 天
     private var weekDays: [Date] {
         let cal = Calendar.current
-        let start = DateHelper.startOfWeek(Date())
+        let start = weekAnchor
         return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
     }
 
@@ -61,12 +65,11 @@ private struct WeeklyGridView: View {
     private let cellH: CGFloat = 22
     private let gap: CGFloat = 6
 
-    // 只到今天
     private var todayKey: Date { DateHelper.startOfDay(Date()) }
+    private var totalBarWidth: CGFloat { cellW * 7 + gap * 6 }
     private var daysPassedInWeek: Int {
         weekDays.filter { DateHelper.startOfDay($0) <= todayKey }.count
     }
-    private var totalBarWidth: CGFloat { cellW * 7 + gap * 6 }
     private var progressWidth: CGFloat {
         let n = max(0, daysPassedInWeek)
         return cellW * CGFloat(n) + gap * CGFloat(max(0, n - 1))
@@ -74,7 +77,32 @@ private struct WeeklyGridView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Header：M T W T F S S（用 index 當 id，避免重複）
+
+            // 🔹 週導覽列（上一週 / 週區間 / 下一週）
+            HStack {
+                Button {
+                    if let prev = Calendar.current.date(byAdding: .weekOfYear, value: -1, to: weekAnchor) {
+                        weekAnchor = prev
+                    }
+                } label: { Image(systemName: "chevron.left") }
+
+                Spacer()
+                Text(weekTitle(weekAnchor))
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+
+                // 下一週若整週都在未來，就禁用
+                let next = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: weekAnchor)!
+                let nextWeekStart = DateHelper.startOfDay(next)
+                let allowNext = nextWeekStart <= todayKey
+                Button {
+                    if allowNext { weekAnchor = next }
+                } label: { Image(systemName: "chevron.right") }
+                .disabled(!allowNext)
+            }
+            .padding(.horizontal, 8)
+
+            // Header：M T W T F S S
             HStack(spacing: gap) {
                 Spacer().frame(width: 12)
                 Text("")
@@ -97,34 +125,34 @@ private struct WeeklyGridView: View {
                                 .fill(AppPalette.color(for: habit.colorHex))
                                 .frame(width: 12, height: 12)
 
-                            Text(habit.name)
-                                .font(.subheadline)
-                                .lineLimit(1)
-                                .frame(minWidth: 80, alignment: .leading)
+                            NavigationLink(destination: HabitAnalyticsView(habit: habit)) {
+                                Text(habit.name).font(.subheadline).lineLimit(1)
+                            }
+                            .frame(minWidth: 80, alignment: .leading)
 
                             Spacer(minLength: 8)
 
                             if habit.period == .weekly {
-                                // 本週是否已生效（任一到今天的日子生效即可）
+                                // 以該週一為判斷點
                                 let weekActive = weekDays.contains { isActive(habit, on: $0) && DateHelper.startOfDay($0) <= todayKey }
-                                // 本週「截至今天」的達標判定（使用今天去算週 periodKey 的進度）
-                                let ok = isDone(habit, on: todayKey)
+                                // 用 min(今天, 週末) 判定達標
+                                let judgeDay = min(todayKey, weekDays.last!) // 直到今天或該週最後一天
+                                let ok = isDone(habit, on: judgeDay)
 
                                 ZStack(alignment: .leading) {
-                                    // 整週底色（未來區域）
                                     RoundedRectangle(cornerRadius: 6)
                                         .fill(Color.gray.opacity(0.06))
                                         .frame(width: totalBarWidth, height: cellH)
 
-                                    // 到今天的進度區域
+                                    // 只填到今天（如果這週在未來就 0）
+                                    let width = max(0, min(progressWidth, totalBarWidth))
                                     RoundedRectangle(cornerRadius: 6)
                                         .fill(weekActive ? (ok ? AppPalette.color(for: habit.colorHex) : Color.gray.opacity(0.15))
                                                          : Color.gray.opacity(0.06))
-                                        .frame(width: progressWidth, height: cellH)
+                                        .frame(width: width, height: cellH)
                                 }
                                 .frame(width: totalBarWidth, height: cellH)
                             } else {
-                                // daily：今天之後一律淡灰
                                 ForEach(weekDays, id: \.self) { day in
                                     let isFuture = DateHelper.startOfDay(day) > todayKey
                                     let active = !isFuture && isActive(habit, on: day)
@@ -143,7 +171,7 @@ private struct WeeklyGridView: View {
                         .padding(.horizontal, 8)
                     }
 
-                    // Perfect：只檢查到今天，今天之後顯示淡灰
+                    // Perfect 列（同樣以目前選擇的那一週）
                     HStack(spacing: gap) {
                         Spacer().frame(width: 12)
                         Text("Perfect")
@@ -176,6 +204,13 @@ private struct WeeklyGridView: View {
         }
     }
 
+    private func weekTitle(_ start: Date) -> String {
+        let cal = Calendar.current
+        let end = cal.date(byAdding: .day, value: 6, to: start)!
+        let f = DateFormatter(); f.locale = .current; f.dateFormat = "MM/dd"
+        return "\(f.string(from: start))–\(f.string(from: end))"
+    }
+
     // 生效與完成（帶 startDate 容錯）
     private func isActive(_ habit: Habit, on day: Date) -> Bool {
         let d = DateHelper.startOfDay(day)
@@ -194,7 +229,6 @@ private struct WeeklyGridView: View {
         return true
     }
 }
-
 
 // MARK: - Monthly View
 
@@ -258,8 +292,8 @@ private struct MonthlyCalendarView: View {
             
             // 月曆格子
             LazyVGrid(columns: gridItems, spacing: 10) {
-                // 前導空白
-                ForEach(0..<firstWeekdayOffset, id: \.self) { _ in
+                // 前導空白（用負索引，避免與 1...days 衝突）
+                ForEach((-firstWeekdayOffset)..<0, id: \.self) { _ in
                     Color.clear.frame(height: 52)
                 }
                 
