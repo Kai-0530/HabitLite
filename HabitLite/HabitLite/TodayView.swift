@@ -25,8 +25,8 @@ struct TodayView: View {
                     Section {
                         DatePicker("選擇日期", selection: $selectedDate, displayedComponents: .date)
                             .datePickerStyle(.compact)
-                    } footer: {
-                    }
+                    } footer: { }
+
                     // 依「是否生效」與「好/壞」分類
                     let activeGood = habits.filter { isActive($0, on: selectedDate) && $0.type == .atLeast }
                     let activeBad  = habits.filter { isActive($0, on: selectedDate) && $0.type == .atMost  }
@@ -119,6 +119,24 @@ struct TodayView: View {
     }
 }
 
+// MARK: - 進度底色填充 View
+private struct ProgressFill: View {
+    let ratio: CGFloat      // 0...1
+    let color: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                color.opacity(0.25)
+                    .frame(width: max(0, min(1, ratio)) * proxy.size.width)
+                    .frame(maxHeight: .infinity)
+                Color.clear
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 // MARK: - Row（支援指定日期 + 可停用）
 private struct HabitRow: View {
     @Environment(\.modelContext) private var context
@@ -131,9 +149,26 @@ private struct HabitRow: View {
     var body: some View {
         let p = HabitService.progress(for: habit, on: date, context: context)
 
+        let tint = AppPalette.color(for: habit.colorHex)
+        let overLimit = (habit.type == .atMost) && (p.count > p.target)
+
+
+        let (ratio, fillColor): (CGFloat, Color) = {
+            if habit.type == .atLeast {
+                if p.target == 0 { return (p.done ? 1.0 : 0.0, tint) }
+                let r = min(max(Double(p.count) / Double(p.target), 0), 1)
+                return (CGFloat(r), tint)
+            } else {
+                if overLimit { return (1.0, .red) }
+                if p.target == 0 { return (0.0, tint) }
+                let r = 1 - Double(p.count) / Double(p.target)
+                return (CGFloat(max(0, min(1, r))), tint)
+            }
+        }()
+
         HStack(spacing: 10) {
             Circle()
-                .fill(AppPalette.color(for: habit.colorHex))
+                .fill(tint)
                 .frame(width: 12, height: 12)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -144,10 +179,16 @@ private struct HabitRow: View {
 
             Spacer(minLength: 8)
 
+            // 右側數字框：壞習慣超標時變紅
             Text("\(p.count)/\(p.target)")
                 .monospaced()
                 .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(p.done ? .green.opacity(0.15) : .gray.opacity(0.12))
+                .background(
+                    (overLimit ? Color.red.opacity(0.18)
+                               : (p.done ? Color.green.opacity(0.15)
+                                         : Color.gray.opacity(0.12)))
+                )
+                .foregroundStyle(overLimit ? Color.red : Color.primary)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
             HStack(spacing: 8) {
@@ -170,8 +211,20 @@ private struct HabitRow: View {
                 .disabled(!enabled)
             }
         }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(
+            ProgressFill(ratio: ratio, color: fillColor)
+                .animation(.easeOut(duration: 0.22), value: ratio)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(.primary.opacity(0.06), lineWidth: 1)
+        )
         .opacity(enabled ? 1.0 : 0.5)
         .id(tick)
-        .padding(.vertical, 6)
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowSeparator(.hidden)
     }
 }

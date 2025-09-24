@@ -15,8 +15,8 @@ enum HabitType: String, Codable, CaseIterable, Identifiable {
     
     var displayName: String {
         switch self {
-        case .atLeast: return "養成目標"
-        case .atMost:  return "戒除壞習慣"
+        case .atLeast: return "好目標"
+        case .atMost:  return "壞習慣"
         }
     }
 }
